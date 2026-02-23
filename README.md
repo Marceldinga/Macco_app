@@ -1,17 +1,28 @@
-# theyoungshallgrow_app
+# Macco_app
 
-A new Flutter project.
+A Flutter-based Njangi digital platform.
 
-## Getting Started
+## 🚀 About
 
-This project is a starting point for a Flutter application.
+Macco_app (theyoungshallgrow) is a digital Njangi system built with Flutter and deployed via Railway.
 
-A few resources to get you started if this is your first Flutter project:
+Features include:
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+- 👥 Member management
+- 📊 Dashboard panels
+- 💰 Contributions tracking
+- 🤖 AI panels
+- 🌐 Web deployment support
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## 🛠 Tech Stack
+
+- Flutter
+- Dart
+- GitHub
+- Railway
+
+## ▶️ Run Locally
+
+```bash
+flutter pub get
+flutter run
