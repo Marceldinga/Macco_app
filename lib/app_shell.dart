@@ -3,12 +3,7 @@ import 'package:flutter/material.dart';
 import 'panels/dashboard_panel.dart';
 import 'panels/members_panel.dart';
 import 'panels/llm_panel.dart';
-import 'panels/loans_panel.dart'; // ✅ NEW
-
-// Create these files later as we build them:
-// import 'panels/audit_panel.dart';
-// import 'panels/health_panel.dart';
-// import 'panels/admin_panel.dart';
+import 'panels/loans_panel.dart'; // ✅ Loans panel
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
@@ -25,7 +20,7 @@ class _AppShellState extends State<AppShell> {
     final pages = <Widget>[
       const DashboardPanel(),
       const MembersPanel(),
-      const LoansPanel(), // ✅ CHANGED (was ComingSoon)
+      const LoansPanel(),        // ✅ Real loans panel
       const LlmPanelPage(),
       const _ComingSoon(title: 'Audit'),
       const _ComingSoon(title: 'Health'),
@@ -43,19 +38,46 @@ class _AppShellState extends State<AppShell> {
     ];
 
     return Scaffold(
-      appBar: AppBar(title: Text(titles[_index])),
+      appBar: AppBar(
+        title: Text("${titles[_index]} • v1"), // version label helps confirm deployment
+      ),
       body: SafeArea(child: pages[_index]),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
-        onDestinationSelected: (i) => setState(() => _index = i),
+        onDestinationSelected: (i) {
+          setState(() {
+            _index = i;
+          });
+        },
         destinations: const [
-          NavigationDestination(icon: Icon(Icons.dashboard), label: 'Dashboard'),
-          NavigationDestination(icon: Icon(Icons.groups), label: 'Members'),
-          NavigationDestination(icon: Icon(Icons.account_balance), label: 'Loans'),
-          NavigationDestination(icon: Icon(Icons.smart_toy), label: 'LLM'),
-          NavigationDestination(icon: Icon(Icons.receipt_long), label: 'Audit'),
-          NavigationDestination(icon: Icon(Icons.health_and_safety), label: 'Health'),
-          NavigationDestination(icon: Icon(Icons.admin_panel_settings), label: 'Admin'),
+          NavigationDestination(
+            icon: Icon(Icons.dashboard),
+            label: 'Dashboard',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.groups),
+            label: 'Members',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.account_balance),
+            label: 'Loans',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.smart_toy),
+            label: 'LLM',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.receipt_long),
+            label: 'Audit',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.health_and_safety),
+            label: 'Health',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.admin_panel_settings),
+            label: 'Admin',
+          ),
         ],
       ),
     );
@@ -64,6 +86,7 @@ class _AppShellState extends State<AppShell> {
 
 class _ComingSoon extends StatelessWidget {
   final String title;
+
   const _ComingSoon({required this.title});
 
   @override
@@ -72,7 +95,10 @@ class _ComingSoon extends StatelessWidget {
       child: Text(
         '$title\n\nComing soon...',
         textAlign: TextAlign.center,
-        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+        style: const TextStyle(
+          fontSize: 18,
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }
