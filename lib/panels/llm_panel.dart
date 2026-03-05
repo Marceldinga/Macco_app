@@ -4,6 +4,13 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
+/// LLM Panel with:
+/// ✅ fixed schema controller (no new controller each build)
+/// ✅ centered conversation column (better desktop layout)
+/// ✅ no more repeated "Hello" on errors / empty replies
+/// ✅ friendly source badge (hides hf:chat:... plumbing)
+/// ✅ member focus chip with clear button
+/// ✅ optional debug toggle to show raw source
 class LlmPanelPage extends StatefulWidget {
   const LlmPanelPage({super.key});
 
@@ -12,7 +19,7 @@ class LlmPanelPage extends StatefulWidget {
 }
 
 class _LlmPanelPageState extends State<LlmPanelPage> {
-  // ✅ Put your Railway API base URL here
+  // Put your Railway API base URL here
   static const String apiBaseUrl = String.fromEnvironment(
     'YOUNCHAT_API_URL',
     defaultValue: 'https://theyoungshallgrow-api-production.up.railway.app',
@@ -23,17 +30,33 @@ class _LlmPanelPageState extends State<LlmPanelPage> {
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scroll = ScrollController();
 
+  // ✅ FIX: keep schema controller in state
+  late final TextEditingController _schemaController;
+
   bool _loading = false;
   String? _lastMemberId;
+
+  // ✅ persistent session id for backend memory
+  final String _sessionId = "flutter-${DateTime.now().millisecondsSinceEpoch}";
+
+  // Optional: show/hide raw backend source
+  bool _debugShowRawSource = false;
 
   final List<_ChatMsg> _messages = [
     _ChatMsg.assistant("Hello 👋🏽 I’m younchat — your Njangi assistant."),
   ];
 
   @override
+  void initState() {
+    super.initState();
+    _schemaController = TextEditingController(text: schema);
+  }
+
+  @override
   void dispose() {
     _controller.dispose();
     _scroll.dispose();
+    _schemaController.dispose();
     super.dispose();
   }
 
@@ -48,26 +71,28 @@ class _LlmPanelPageState extends State<LlmPanelPage> {
     });
     _scrollToBottom();
 
-    final history = _messages
-        .where((m) => m.role == 'user' || m.role == 'assistant')
-        .take(30)
-        .toList();
-    final trimmed =
-        history.length > 10 ? history.sublist(history.length - 10) : history;
+    final history = _messages.where((m) => m.role == 'user' || m.role == 'assistant').take(30).toList();
+    final trimmed = history.length > 10 ? history.sublist(history.length - 10) : history;
 
     final payload = {
       "message": text,
       "schema": schema,
       "last_member_id": _lastMemberId,
       "history": trimmed.map((m) => {"role": m.role, "content": m.content}).toList(),
+      "client": "flutter",
     };
 
     try {
       final uri = Uri.parse("${apiBaseUrl.replaceAll(RegExp(r'/+$'), '')}/chat");
+
       final res = await http
           .post(
             uri,
-            headers: {"Content-Type": "application/json"},
+            headers: {
+              "Content-Type": "application/json",
+              "x-session-id": _sessionId,
+              "x-client": "flutter",
+            },
             body: jsonEncode(payload),
           )
           .timeout(const Duration(seconds: 70));
@@ -78,7 +103,7 @@ class _LlmPanelPageState extends State<LlmPanelPage> {
       }
 
       final data = jsonDecode(res.body) as Map<String, dynamic>;
-      final reply = (data["reply"] ?? "").toString();
+      final reply = (data["reply"] ?? "").toString().trim();
       final usedSource = (data["used_source"] ?? "").toString();
       final memberIdFocus = data["member_id_focus"]?.toString();
       final dataframe = data["dataframe"];
@@ -90,7 +115,7 @@ class _LlmPanelPageState extends State<LlmPanelPage> {
       setState(() {
         _messages.add(
           _ChatMsg.assistant(
-            reply.isEmpty ? "Hello 👋🏽" : reply,
+            reply.isEmpty ? "✅ Done." : reply,
             usedSource: usedSource,
             dataframe: dataframe is Map<String, dynamic> ? dataframe : null,
           ),
@@ -106,7 +131,12 @@ class _LlmPanelPageState extends State<LlmPanelPage> {
 
   void _addAssistantError(String msg) {
     setState(() {
-      _messages.add(_ChatMsg.assistant("Hello 👋🏽 $msg", usedSource: "client:error"));
+      _messages.add(
+        _ChatMsg.assistant(
+          "⚠️ $msg",
+          usedSource: "client:error",
+        ),
+      );
     });
   }
 
@@ -126,6 +156,19 @@ class _LlmPanelPageState extends State<LlmPanelPage> {
     _send();
   }
 
+  void _clearChat() {
+    setState(() {
+      _messages
+        ..clear()
+        ..add(_ChatMsg.assistant("Hello 👋🏽 I’m younchat — your Njangi assistant."));
+      _lastMemberId = null;
+    });
+  }
+
+  void _clearMemberFocus() {
+    setState(() => _lastMemberId = null);
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -141,32 +184,31 @@ class _LlmPanelPageState extends State<LlmPanelPage> {
         ),
         actions: [
           IconButton(
+            tooltip: "Toggle debug source",
+            icon: Icon(_debugShowRawSource ? Icons.bug_report : Icons.bug_report_outlined),
+            onPressed: () => setState(() => _debugShowRawSource = !_debugShowRawSource),
+          ),
+          IconButton(
             tooltip: "Clear chat",
             icon: const Icon(Icons.delete_outline),
-            onPressed: () {
-              setState(() {
-                _messages
-                  ..clear()
-                  ..add(_ChatMsg.assistant("Hello 👋🏽 I’m younchat — your Njangi assistant."));
-                _lastMemberId = null;
-              });
-            },
+            onPressed: _clearChat,
           ),
           const SizedBox(width: 6),
         ],
       ),
       body: Stack(
         children: [
-          // ✅ Premium gradient background
           const _FintechBackground(),
           Column(
             children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
                 child: _HeaderCard(
+                  schemaController: _schemaController,
                   schema: schema,
                   lastMemberId: _lastMemberId,
                   onSchemaChanged: (v) => setState(() => schema = v),
+                  onClearMemberFocus: _clearMemberFocus,
                 ),
               ),
               Padding(
@@ -183,25 +225,33 @@ class _LlmPanelPageState extends State<LlmPanelPage> {
                     decoration: BoxDecoration(
                       color: const Color(0xFF0E111B).withOpacity(0.70),
                       border: Border(
-                        top: BorderSide(
-                          color: Colors.white.withOpacity(0.08),
-                        ),
+                        top: BorderSide(color: Colors.white.withOpacity(0.08)),
                       ),
                     ),
-                    child: ListView.builder(
-                      controller: _scroll,
-                      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-                      itemCount: _messages.length + (_loading ? 1 : 0),
-                      itemBuilder: (context, index) {
-                        if (_loading && index == _messages.length) {
-                          return _ThinkingBubble(
-                            bg: const Color(0xFF151A28),
-                            fg: cs.onSurface,
-                          );
-                        }
-                        final msg = _messages[index];
-                        return _ChatBubble(msg: msg);
-                      },
+                    child: Align(
+                      alignment: Alignment.topCenter,
+                      // ✅ Center the whole conversation area on wide screens
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 920),
+                        child: ListView.builder(
+                          controller: _scroll,
+                          padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+                          itemCount: _messages.length + (_loading ? 1 : 0),
+                          itemBuilder: (context, index) {
+                            if (_loading && index == _messages.length) {
+                              return _ThinkingBubble(
+                                bg: const Color(0xFF151A28),
+                                fg: cs.onSurface,
+                              );
+                            }
+                            final msg = _messages[index];
+                            return _ChatBubble(
+                              msg: msg,
+                              showRawSource: _debugShowRawSource,
+                            );
+                          },
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -239,7 +289,6 @@ class _FintechBackground extends StatelessWidget {
       ),
       child: Stack(
         children: [
-          // soft glow
           Positioned(
             left: -140,
             top: -120,
@@ -264,7 +313,6 @@ class _FintechBackground extends StatelessWidget {
               ),
             ),
           ),
-          // subtle noise blur feel
           BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
             child: Container(color: Colors.transparent),
@@ -276,14 +324,18 @@ class _FintechBackground extends StatelessWidget {
 }
 
 class _HeaderCard extends StatelessWidget {
+  final TextEditingController schemaController;
   final String schema;
   final String? lastMemberId;
   final ValueChanged<String> onSchemaChanged;
+  final VoidCallback onClearMemberFocus;
 
   const _HeaderCard({
+    required this.schemaController,
     required this.schema,
     required this.lastMemberId,
     required this.onSchemaChanged,
+    required this.onClearMemberFocus,
   });
 
   @override
@@ -301,7 +353,7 @@ class _HeaderCard extends StatelessWidget {
         children: [
           Expanded(
             child: TextField(
-              controller: TextEditingController(text: schema),
+              controller: schemaController,
               onChanged: onSchemaChanged,
               style: const TextStyle(fontWeight: FontWeight.w600),
               decoration: InputDecoration(
@@ -328,22 +380,54 @@ class _HeaderCard extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 10),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-            decoration: BoxDecoration(
-              color: const Color(0xFF12162A).withOpacity(0.65),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: border),
-            ),
-            child: Text(
-              "last_member_id: ${lastMemberId ?? '—'}",
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.white.withOpacity(0.80),
-                fontWeight: FontWeight.w600,
+          if (lastMemberId == null)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF12162A).withOpacity(0.65),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: border),
+              ),
+              child: Text(
+                "member_focus: —",
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.white.withOpacity(0.80),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            )
+          else
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF12162A).withOpacity(0.65),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: border),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    "member_focus: $lastMemberId",
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.white.withOpacity(0.85),
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  InkWell(
+                    onTap: onClearMemberFocus,
+                    borderRadius: BorderRadius.circular(999),
+                    child: Padding(
+                      padding: const EdgeInsets.all(4),
+                      child: Icon(Icons.close, size: 16, color: Colors.white.withOpacity(0.75)),
+                    ),
+                  ),
+                ],
               ),
             ),
-          ),
         ],
       ),
     );
@@ -376,10 +460,7 @@ class _ExamplesRow extends StatelessWidget {
         separatorBuilder: (_, __) => const SizedBox(width: 8),
         itemBuilder: (context, i) {
           final e = examples[i];
-          return _NiceChip(
-            label: e,
-            onTap: () => onPick(e),
-          );
+          return _NiceChip(label: e, onTap: () => onPick(e));
         },
       ),
     );
@@ -541,8 +622,27 @@ class _Composer extends StatelessWidget {
 
 class _ChatBubble extends StatelessWidget {
   final _ChatMsg msg;
+  final bool showRawSource;
 
-  const _ChatBubble({required this.msg});
+  const _ChatBubble({
+    required this.msg,
+    required this.showRawSource,
+  });
+
+  String _friendlySourceLabel(String raw) {
+    final s = raw.trim();
+    if (s.isEmpty) return "";
+
+    // Hide LLM plumbing by default; show friendly badge instead.
+    if (s.startsWith("hf:chat:")) return "LLM";
+    if (s.contains("members")) return "DB • members";
+    if (s.contains("loans")) return "DB • loans";
+    if (s.contains("finance")) return "DB • finance";
+    if (s.contains("contrib")) return "DB • contributions";
+    if (s.contains("table")) return "DB • schema";
+    if (s == "client:error") return "client";
+    return "source";
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -553,45 +653,80 @@ class _ChatBubble extends StatelessWidget {
 
     final align = isUser ? Alignment.centerRight : Alignment.centerLeft;
 
+    final raw = msg.usedSource ?? "";
+    final label = _friendlySourceLabel(raw);
+
     return Align(
       alignment: align,
-      child: Container(
+      child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 780),
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: border),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SelectableText(
-              msg.content,
-              style: TextStyle(
-                fontSize: 14,
-                height: 1.30,
-                color: Colors.white.withOpacity(0.92),
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            if (!isUser && (msg.usedSource?.isNotEmpty ?? false)) ...[
-              const SizedBox(height: 8),
-              Text(
-                "source: ${msg.usedSource}",
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: border),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SelectableText(
+                msg.content,
                 style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.white.withOpacity(0.55),
-                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                  height: 1.30,
+                  color: Colors.white.withOpacity(0.92),
+                  fontWeight: FontWeight.w500,
                 ),
               ),
+              if (!isUser && (raw.isNotEmpty)) ...[
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _Badge(text: label),
+                    if (showRawSource) _Badge(text: raw, faint: true),
+                  ],
+                ),
+              ],
+              if (!isUser && msg.dataframe != null) ...[
+                const SizedBox(height: 10),
+                _DfCard(df: msg.dataframe!),
+              ],
             ],
-            if (!isUser && msg.dataframe != null) ...[
-              const SizedBox(height: 10),
-              _DfCard(df: msg.dataframe!),
-            ],
-          ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _Badge extends StatelessWidget {
+  final String text;
+  final bool faint;
+
+  const _Badge({required this.text, this.faint = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final border = Colors.white.withOpacity(faint ? 0.08 : 0.14);
+    final bg = const Color(0xFF0F1321).withOpacity(faint ? 0.45 : 0.75);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: border),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 11,
+          color: Colors.white.withOpacity(faint ? 0.55 : 0.80),
+          fontWeight: FontWeight.w700,
         ),
       ),
     );
@@ -630,7 +765,10 @@ class _DfCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: TextStyle(fontWeight: FontWeight.w800, color: Colors.white.withOpacity(0.90))),
+          Text(
+            title,
+            style: TextStyle(fontWeight: FontWeight.w800, color: Colors.white.withOpacity(0.90)),
+          ),
           const SizedBox(height: 10),
           if (maxCols.isEmpty)
             Text("No columns returned.", style: TextStyle(color: Colors.white.withOpacity(0.75)))

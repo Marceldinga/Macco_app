@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 
 import 'panels/dashboard_panel.dart';
 import 'panels/members_panel.dart';
-import 'panels/llm_panel.dart'; // ✅ add this
+import 'panels/llm_panel.dart';
+import 'panels/loans_panel.dart'; // ✅ NEW
 
 // Create these files later as we build them:
-// import 'panels/loans_panel.dart';
 // import 'panels/audit_panel.dart';
 // import 'panels/health_panel.dart';
 // import 'panels/admin_panel.dart';
@@ -25,8 +25,8 @@ class _AppShellState extends State<AppShell> {
     final pages = <Widget>[
       const DashboardPanel(),
       const MembersPanel(),
-      const _ComingSoon(title: 'Loans'),
-      const LlmPanelPage(), // ✅ replace ComingSoon with real panel
+      const LoansPanel(), // ✅ CHANGED (was ComingSoon)
+      const LlmPanelPage(),
       const _ComingSoon(title: 'Audit'),
       const _ComingSoon(title: 'Health'),
       const _ComingSoon(title: 'Admin'),

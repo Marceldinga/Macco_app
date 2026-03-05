@@ -62,17 +62,26 @@ class _MembersPanelState extends State<MembersPanel> {
 
     final nextMemberId = _toInt(ap['next_member_id']);
 
-    // Summary totals
+    // Summary totals + map id->name for KPI
     num sumContrib = 0;
     num sumFoundation = 0;
+    final idToName = <int, String>{};
+
     for (final r in rows) {
       sumContrib += _toNum(r['contrib_total']);
       sumFoundation += _toNum(r['foundation_total']);
+
+      final id = _toInt(r['member_id']);
+      final nm = _pickMemberName(r, fallbackId: id);
+      if (id != 0 && nm.trim().isNotEmpty) idToName[id] = nm.trim();
     }
+
+    final nextMemberName = nextMemberId == 0 ? '' : (idToName[nextMemberId] ?? '');
 
     return _MembersData(
       rows: rows,
       nextMemberId: nextMemberId,
+      nextMemberName: nextMemberName,
       totalMembers: rows.length,
       sumContrib: sumContrib,
       sumFoundation: sumFoundation,
@@ -85,10 +94,32 @@ class _MembersPanelState extends State<MembersPanel> {
 
   String s(dynamic v) => v == null ? '' : v.toString();
 
+  String _pickMemberName(Map<String, dynamic> r, {required int fallbackId}) {
+    final memberName = s(r['member_name']);
+    if (memberName.isNotEmpty) return memberName;
+
+    final display = s(r['display_name']);
+    if (display.isNotEmpty) return display;
+
+    final name = s(r['name']);
+    if (name.isNotEmpty) return name;
+
+    return 'Member $fallbackId';
+  }
+
+  // ✅ ONLY LAST 4 DIGITS (NO +, NO SPACES)
+  String last4Phone(String phone) {
+    if (phone.isEmpty) return '';
+    final digits = phone.replaceAll(RegExp(r'\D'), '');
+    if (digits.length <= 4) return digits;
+    return digits.substring(digits.length - 4);
+  }
+
   String money(dynamic v) {
     final numVal = _toNum(v);
     final hasCents = (numVal * 100).round() % 100 != 0;
     final txt = hasCents ? numVal.toStringAsFixed(2) : numVal.toStringAsFixed(0);
+
     // simple comma formatting without intl dependency
     final parts = txt.split('.');
     final whole = parts[0];
@@ -107,7 +138,7 @@ class _MembersPanelState extends State<MembersPanel> {
   bool _matches(Map<String, dynamic> r, String q) {
     if (q.isEmpty) return true;
     final id = s(r['member_id']);
-    final name = s(r['member_name'] ?? r['display_name'] ?? r['name']);
+    final name = _pickMemberName(r, fallbackId: _toInt(r['member_id']));
     final phone = s(r['phone']);
     final hay = '${id.toLowerCase()} ${name.toLowerCase()} ${phone.toLowerCase()}';
     return hay.contains(q.toLowerCase());
@@ -145,7 +176,7 @@ class _MembersPanelState extends State<MembersPanel> {
               style: const TextStyle(color: Colors.white),
               decoration: InputDecoration(
                 prefixIcon: const Icon(Icons.search, color: Colors.white70),
-                hintText: 'Search by id, name, phone…',
+                hintText: 'Search by id, name…',
                 hintStyle: const TextStyle(color: Colors.white54),
                 filled: true,
                 fillColor: _cardBg,
@@ -191,13 +222,16 @@ class _MembersPanelState extends State<MembersPanel> {
                 final q = _search.text.trim();
                 final rows = q.isEmpty ? data.rows : data.rows.where((r) => _matches(r, q)).toList();
 
+                final nextText = data.nextMemberId == 0
+                    ? '—'
+                    : '${data.nextMemberName} (ID: ${data.nextMemberId})';
+
                 // Summary strip
                 final chips = [
                   _miniStat('Total', '${data.totalMembers}', Icons.group),
                   _miniStat('Contrib', money(data.sumContrib), Icons.payments),
                   _miniStat('Foundation', money(data.sumFoundation), Icons.savings),
-                  _miniStat('Next Beneficiary ID', data.nextMemberId == 0 ? '—' : '${data.nextMemberId}',
-                      Icons.emoji_events),
+                  _miniStat('Next Beneficiary', nextText, Icons.emoji_events),
                 ];
 
                 return Column(
@@ -216,10 +250,10 @@ class _MembersPanelState extends State<MembersPanel> {
                         final memberId = _toInt(r['member_id']);
                         final isBeneficiary = memberId != 0 && memberId == data.nextMemberId;
 
-                        final display = s(r['display_name']);
-                        final name = s(r['name']);
-                        final memberName = display.isNotEmpty ? display : (name.isNotEmpty ? name : 'Member $memberId');
-                        final phone = s(r['phone']);
+                        final memberName = _pickMemberName(r, fallbackId: memberId);
+
+                        // ✅ last 4 digits ONLY
+                        final phoneLast4 = last4Phone(s(r['phone']));
 
                         final contribTotal = money(r['contrib_total']);
                         final foundationTotal = money(r['foundation_total']);
@@ -292,10 +326,13 @@ class _MembersPanelState extends State<MembersPanel> {
                                       ],
                                     ),
                                     const SizedBox(height: 6),
+
+                                    // ✅ THIS IS THE LINE THAT HIDES FULL PHONE
                                     Text(
-                                      'ID: $memberId${phone.isNotEmpty ? ' • Phone: $phone' : ''}',
+                                      'ID: $memberId${phoneLast4.isNotEmpty ? ' • $phoneLast4' : ''}',
                                       style: const TextStyle(color: Colors.white70),
                                     ),
+
                                     const SizedBox(height: 8),
                                     Wrap(
                                       spacing: 10,
@@ -364,7 +401,11 @@ class _MembersPanelState extends State<MembersPanel> {
               children: [
                 Text(title, style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.w700)),
                 const SizedBox(height: 4),
-                Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 16)),
+                Text(
+                  value,
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 16),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ],
             ),
           ),
@@ -399,6 +440,7 @@ class _MembersPanelState extends State<MembersPanel> {
 class _MembersData {
   final List<Map<String, dynamic>> rows;
   final int nextMemberId;
+  final String nextMemberName;
   final int totalMembers;
   final num sumContrib;
   final num sumFoundation;
@@ -406,6 +448,7 @@ class _MembersData {
   _MembersData({
     required this.rows,
     required this.nextMemberId,
+    required this.nextMemberName,
     required this.totalMembers,
     required this.sumContrib,
     required this.sumFoundation,
